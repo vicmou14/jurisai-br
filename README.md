@@ -3,61 +3,48 @@
 Plataforma de triagem, pesquisa e organização de informações jurídicas brasileiras.
 
 ## Capacidades
+- Triagem e análise inicial de documentos.
+- Pesquisa semântica sobre documentos persistidos.
+- Embeddings persistidos e arquitetura para pgvector.
+- Ingestão de TXT, PDF e DOCX.
+- Conectores STJ, Planalto e STF conforme os mecanismos oficiais configurados.
+- Sincronização, deduplicação, auditoria e status de fontes.
+- Interface web servida em `/web/`.
+- Autenticação por API key e CORS configurável.
 
-- Triagem por áreas jurídicas.
-- Análise inicial de documentos.
-- Perguntas jurídicas e recuperação de fontes.
-- Persistência de documentos com SQLAlchemy.
-- Busca ranqueada sobre a base persistida.
-- Auditoria e autenticação por API key.
-- Sincronização de fontes jurídicas oficiais.
-- Interface web para pesquisa e ingestão.
-
-## Execução rápida
-
+## Execução local
 ```bash
 pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
+Abra `http://localhost:8000/web/`.
 
-Para desenvolvimento com PostgreSQL/pgvector:
-
+## Produção com PostgreSQL
+1. Copie `.env.example` para `.env` e defina segredos reais.
+2. Suba a infraestrutura:
 ```bash
-docker compose up -d
-export DATABASE_URL='postgresql+psycopg://jurisai:jurisai@localhost:5432/jurisai'
-uvicorn app.main:app --reload
+docker compose up --build -d
+```
+3. Aplique `migrations/001_pgvector.sql` no PostgreSQL antes de habilitar consultas vetoriais nativas.
+4. Reindexe documentos existentes:
+```bash
+python scripts/reindex_documents.py
 ```
 
 ## Sincronização de fontes
-
-O projeto sincroniza apenas pelos adaptadores implementados e configurados:
-
 - **STJ:** catálogo oficial de Dados Abertos via CKAN.
-- **Planalto:** URLs canônicas oficiais configuradas em `JURISAI_PLANALTO_URLS`.
-- **STF:** CSV exportado pela pesquisa oficial, configurado em `JURISAI_STF_CSV`.
+- **Planalto:** URLs canônicas em `JURISAI_PLANALTO_URLS`.
+- **STF:** CSV exportado oficialmente em `JURISAI_STF_CSV`.
 
-Exemplos:
-
-```bash
-export JURISAI_PLANALTO_URLS='https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm'
-export JURISAI_STF_CSV='./dados/stf.csv'
-python scripts/sync_sources.py planalto
-python scripts/sync_sources.py stf
-```
-
-A API também expõe:
-
-- `GET /v1/sync/status`
-- `POST /v1/sync/stj`
-- `POST /v1/sync/planalto`
-- `POST /v1/sync/stf`
+API: `GET /v1/sync/status` e `POST /v1/sync/{stj|planalto|stf}`.
 
 ## Testes
-
 ```bash
 pytest -q
 ```
 
-## Limites
+## Segurança e LGPD
+Use HTTPS e segredos fortes, restrinja `JURISAI_CORS_ORIGINS`, faça backups e não trate dados reais de clientes sem revisão de privacidade, segurança e conformidade. Em `JURISAI_ENV=production`, a ausência de API key bloqueia o acesso protegido.
 
-O JurisAI-BR realiza pesquisa, triagem e organização de informações. Não substitui análise jurídica profissional, consulta integral e atualizada das fontes oficiais, nem validação humana antes do uso em casos concretos.
+## Limites
+O JurisAI-BR auxilia pesquisa, triagem e organização. Não substitui análise jurídica profissional nem a validação humana e consulta às fontes oficiais atualizadas.
