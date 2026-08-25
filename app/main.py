@@ -1,4 +1,4 @@
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db import Base, engine, get_session
@@ -17,12 +17,15 @@ from app.services.rag import answer_with_sources
 from app.services.official_sources import list_official_sources
 from app.services.seed_data import seed_demo_data
 from app.services.semantic_search import search as semantic_document_search
+from app.services.sync_jobs import build_registry
+from app.services.sync_state import load_state, mark_synced
 
 app = FastAPI(
     title="JurisAI-BR",
     description="API de triagem, organização, pesquisa e recuperação de informações jurídicas brasileiras.",
-    version="1.3.0",
+    version="1.4.0",
 )
+SYNC_REGISTRY = build_registry()
 
 @app.on_event("startup")
 def startup() -> None:
@@ -30,11 +33,25 @@ def startup() -> None:
 
 @app.get("/")
 def root() -> dict[str, str]:
-    return {"name": "JurisAI-BR", "status": "online", "version": "1.3.0"}
+    return {"name": "JurisAI-BR", "status": "online", "version": "1.4.0"}
 
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+@app.get("/v1/sync/status")
+def sync_status(actor: str = Depends(require_api_key)) -> dict:
+    return {"sources": SYNC_REGISTRY.names(), "state": load_state()}
+
+@app.post("/v1/sync/{source}")
+def sync_source(source: str, actor: str = Depends(require_api_key)) -> dict:
+    if source not in SYNC_REGISTRY.names():
+        raise HTTPException(status_code=404, detail="Fonte não registrada")
+    result = SYNC_REGISTRY.execute(source)
+    if not result.errors:
+        mark_synced(source, result.finished_at)
+    log_event("source_sync", {"actor": actor, "source": source, "imported": result.imported, "skipped": result.skipped, "errors": result.errors})
+    return result.__dict__
 
 @app.post("/v1/documents")
 def ingest_document(payload: LegalDocumentCreate, session: Session = Depends(get_session), actor: str = Depends(require_api_key)) -> dict:
