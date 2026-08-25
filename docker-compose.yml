@@ -4,11 +4,23 @@ services:
     environment:
       POSTGRES_DB: jurisai
       POSTGRES_USER: jurisai
-      POSTGRES_PASSWORD: jurisai
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jurisai}
+    ports: ["5432:5432"]
+    volumes: ["postgres_data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jurisai -d jurisai"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://jurisai:${POSTGRES_PASSWORD:-jurisai}@db:5432/jurisai
+      JURISAI_API_KEY: ${JURISAI_API_KEY:-}
+      JURISAI_CORS_ORIGINS: ${JURISAI_CORS_ORIGINS:-http://localhost:8000}
+    ports: ["8000:8000"]
+    depends_on:
+      db:
+        condition: service_healthy
 volumes:
   postgres_data:
