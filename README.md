@@ -1,51 +1,39 @@
 # JurisAI-BR
 
-Plataforma de inteligência artificial jurídica voltada ao contexto brasileiro.
+Plataforma de triagem e organização de informações jurídicas brasileiras.
 
-## Objetivo
+## O que a versão 1.0 faz
 
-O JurisAI-BR será uma base para pesquisa, análise, triagem e organização de informações jurídicas, com arquitetura preparada para diferentes áreas do Direito e para integração futura com fontes normativas, jurisprudenciais e documentais.
+- Classifica textos em áreas jurídicas: civil, consumidor, trabalhista, família, criminal, tributário, previdenciário, administrativo e empresarial.
+- Faz análise inicial de documentos, identificando datas, valores, partes e alertas automáticos.
+- Recebe perguntas para triagem e sugere próximos passos e documentos relevantes.
+- Expõe uma API HTTP com documentação automática em `/docs`.
+- Inclui testes automatizados e CI com GitHub Actions.
 
-## Áreas previstas
+## Execução
 
-- Direito Civil e Processo Civil
-- Direito Penal e Processo Penal
-- Direito do Trabalho e Processo do Trabalho
-- Direito do Consumidor
-- Direito Empresarial
-- Direito Tributário
-- Direito Administrativo
-- Direito Constitucional
-- Direito Previdenciário
-- Direito de Família e Sucessões
-- Direito Imobiliário
-- Direito Digital e Proteção de Dados
-- Direito Ambiental
-- Direito Eleitoral
-- Direito Internacional
+```bash
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
 
-## Capacidades planejadas
+Acesse `http://127.0.0.1:8000/docs`.
 
-1. Pesquisa e organização de legislação
-2. Pesquisa e análise de jurisprudência
-3. Triagem inicial de casos
-4. Classificação por área e assunto jurídico
-5. Extração de fatos, pedidos e fundamentos de documentos
-6. Geração de resumos jurídicos estruturados
-7. Identificação de questões jurídicas relevantes
-8. Apoio à elaboração de estratégias e documentos
-9. Organização de evidências e cronologias
-10. Base de conhecimento com fontes rastreáveis
+## Endpoints
 
-## Arquitetura inicial
+- `GET /health`
+- `POST /v1/classify`
+- `POST /v1/analyze-document`
+- `POST /v1/legal-query`
 
-O projeto será organizado em camadas:
+## Exemplo
 
-- `app/` — aplicação e API
-- `docs/` — documentação e decisões de arquitetura
-- `tests/` — testes automatizados
-- `data/` — estruturas de dados e exemplos locais
+```bash
+curl -X POST http://127.0.0.1:8000/v1/classify \
+  -H "Content-Type: application/json" \
+  -d '{"text":"Comprei um produto com defeito e a loja recusou a garantia."}'
+```
 
-A primeira versão utilizará uma API modular, permitindo separar posteriormente os componentes de ingestão de dados, recuperação de informações, análise jurídica e interface.
+## Limites
 
-> **Aviso:** o JurisAI-BR é uma ferramenta de apoio. Resultados jurídicos devem ser revisados por profissional qualificado e confrontados com fontes oficiais atualizadas.
+O JurisAI-BR realiza triagem e organização de informações. Não substitui análise profissional, consulta integral da legislação, jurisprudência atualizada ou atendimento de emergência.
