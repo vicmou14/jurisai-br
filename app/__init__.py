@@ -1,0 +1,1 @@
+"""JurisAI-BR application package."""
