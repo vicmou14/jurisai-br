@@ -1,38 +1,63 @@
 from fastapi import Depends, FastAPI
+from sqlalchemy.orm import Session
+
+from app.db import Base, engine, get_session
+import app.models  # noqa: F401
 from app.schemas import (
     ClassifyRequest, ClassificationResult, DocumentAnalysisRequest,
-    DocumentAnalysisResult, LegalQueryRequest, LegalQueryResult,
+    DocumentAnalysisResult, LegalDocumentCreate, LegalQueryRequest, LegalQueryResult,
 )
 from app.services.auth import require_api_key
 from app.services.audit import log_event
 from app.services.classifier import DISCLAIMER, classify_text, next_steps
 from app.services.analyzer import analyze_document
 from app.services.advisor import answer_question
+from app.services.document_repository import save_document
 from app.services.rag import answer_with_sources
 from app.services.official_sources import list_official_sources
-from app.services.search import semantic_search
+from app.services.seed_data import seed_demo_data
+from app.services.semantic_search import search as semantic_document_search
 
 app = FastAPI(
     title="JurisAI-BR",
     description="API de triagem, organização, pesquisa e recuperação de informações jurídicas brasileiras.",
-    version="1.2.0",
+    version="1.3.0",
 )
+
+@app.on_event("startup")
+def startup() -> None:
+    Base.metadata.create_all(bind=engine)
 
 @app.get("/")
 def root() -> dict[str, str]:
-    return {"name": "JurisAI-BR", "status": "online", "version": "1.2.0"}
+    return {"name": "JurisAI-BR", "status": "online", "version": "1.3.0"}
 
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
 
+@app.post("/v1/documents")
+def ingest_document(payload: LegalDocumentCreate, session: Session = Depends(get_session), actor: str = Depends(require_api_key)) -> dict:
+    document = save_document(session, payload.title, payload.content, payload.source, payload.category)
+    log_event("ingest_document", {"actor": actor, "document_id": document.id, "source": payload.source})
+    return {"id": document.id, "title": document.title, "category": document.category, "created": True}
+
+@app.post("/v1/documents/seed")
+def seed_documents(session: Session = Depends(get_session), actor: str = Depends(require_api_key)) -> dict:
+    count = seed_demo_data(session)
+    log_event("seed_documents", {"actor": actor, "count": count})
+    return {"seeded": count}
+
+@app.get("/v1/search")
+def search(query: str, session: Session = Depends(get_session), actor: str = Depends(require_api_key)) -> dict:
+    results = semantic_document_search(session, query)
+    log_event("search", {"actor": actor, "results": len(results), "mode": "persistent-semantic"})
+    return {"query": query, "results": results}
+
 @app.post("/v1/classify", response_model=ClassificationResult)
 def classify(payload: ClassifyRequest, actor: str = Depends(require_api_key)) -> ClassificationResult:
     area, confidence, keywords = classify_text(payload.text)
-    result = ClassificationResult(
-        area=area, confidence=confidence, matched_keywords=keywords,
-        next_steps=next_steps(area), disclaimer=DISCLAIMER,
-    )
+    result = ClassificationResult(area=area, confidence=confidence, matched_keywords=keywords, next_steps=next_steps(area), disclaimer=DISCLAIMER)
     log_event("classify", {"actor": actor, "area": area, "text_length": len(payload.text)})
     return result
 
@@ -53,12 +78,6 @@ def legal_research(payload: LegalQueryRequest, actor: str = Depends(require_api_
     result = answer_with_sources(payload.question, payload.context)
     log_event("legal_research", {"actor": actor, "area": result["area"], "sources": len(result["sources"])})
     return result
-
-@app.get("/v1/search")
-def search(query: str, actor: str = Depends(require_api_key)) -> dict:
-    results = semantic_search(query)
-    log_event("search", {"actor": actor, "results": len(results)})
-    return {"query": query, "results": results}
 
 @app.get("/v1/sources")
 def sources() -> dict:
