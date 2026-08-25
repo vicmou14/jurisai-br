@@ -1,6 +1,8 @@
 import os
+import time
 from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
@@ -13,6 +15,7 @@ from app.services.classifier import DISCLAIMER, classify_text, next_steps
 from app.services.analyzer import analyze_document
 from app.services.advisor import answer_question
 from app.services.document_repository import save_document
+from app.services.metrics import increment, snapshot
 from app.services.rag import answer_with_sources
 from app.services.official_sources import list_official_sources
 from app.services.readiness import database_ready
@@ -23,16 +26,26 @@ from app.services.sync_jobs import build_registry
 from app.services.sync_state import load_state, mark_synced
 from app.services.upload import extract_text
 
-app = FastAPI(title="JurisAI-BR", description="API de triagem, organização, pesquisa e recuperação de informações jurídicas brasileiras.", version="1.7.0")
+app = FastAPI(title="JurisAI-BR", description="API de triagem, organização, pesquisa e recuperação de informações jurídicas brasileiras.", version="1.8.0")
 origins = [value.strip() for value in os.getenv("JURISAI_CORS_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000").split(",") if value.strip()]
 app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=False, allow_methods=["GET", "POST"], allow_headers=["Content-Type", "X-API-Key"])
 SYNC_REGISTRY = build_registry()
 
 @app.middleware("http")
-async def rate_limit_requests(request: Request, call_next):
-    if request.url.path not in {"/health", "/health/details", "/ready"}:
+async def observe_and_rate_limit(request: Request, call_next):
+    start = time.perf_counter()
+    if request.url.path not in {"/health", "/health/details", "/ready", "/metrics"}:
         enforce_rate_limit(request)
-    return await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception:
+        increment("requests_errors_total")
+        raise
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    increment("requests_total")
+    increment(f"requests_status_{response.status_code}_total")
+    response.headers["X-Response-Time-Ms"] = f"{elapsed_ms:.2f}"
+    return response
 
 @app.on_event("startup")
 def startup() -> None: Base.metadata.create_all(bind=engine)
@@ -40,7 +53,7 @@ def startup() -> None: Base.metadata.create_all(bind=engine)
 if os.path.isdir("web"): app.mount("/web", StaticFiles(directory="web", html=True), name="web")
 
 @app.get("/")
-def root() -> dict[str, str]: return {"name": "JurisAI-BR", "status": "online", "version": "1.7.0"}
+def root() -> dict[str, str]: return {"name": "JurisAI-BR", "status": "online", "version": "1.8.0"}
 
 @app.get("/health")
 def health() -> dict[str, str]: return {"status": "ok"}
@@ -53,6 +66,11 @@ def ready() -> dict:
 
 @app.get("/health/details")
 def health_details() -> dict[str, str]: return {"status": "ok", "database": engine.url.get_backend_name()}
+
+@app.get("/metrics", response_class=PlainTextResponse)
+def metrics(actor: str = Depends(require_api_key)) -> str:
+    values = snapshot()
+    return "\n".join(f"jurisai_{name} {value}" for name, value in sorted(values.items())) + "\n"
 
 @app.get("/v1/sync/status")
 def sync_status(actor: str = Depends(require_api_key)) -> dict: return {"sources": SYNC_REGISTRY.names(), "state": load_state()}
