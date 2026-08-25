@@ -1,5 +1,5 @@
 import os
-from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
@@ -17,14 +17,21 @@ from app.services.rag import answer_with_sources
 from app.services.official_sources import list_official_sources
 from app.services.seed_data import seed_demo_data
 from app.services.semantic_search import search as semantic_document_search
+from app.services.security import enforce_rate_limit
 from app.services.sync_jobs import build_registry
 from app.services.sync_state import load_state, mark_synced
 from app.services.upload import extract_text
 
-app = FastAPI(title="JurisAI-BR", description="API de triagem, organização, pesquisa e recuperação de informações jurídicas brasileiras.", version="1.5.0")
+app = FastAPI(title="JurisAI-BR", description="API de triagem, organização, pesquisa e recuperação de informações jurídicas brasileiras.", version="1.6.0")
 origins = [value.strip() for value in os.getenv("JURISAI_CORS_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000").split(",") if value.strip()]
 app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=False, allow_methods=["GET", "POST"], allow_headers=["Content-Type", "X-API-Key"])
 SYNC_REGISTRY = build_registry()
+
+@app.middleware("http")
+async def rate_limit_requests(request: Request, call_next):
+    if request.url.path not in {"/health", "/health/details"}:
+        enforce_rate_limit(request)
+    return await call_next(request)
 
 @app.on_event("startup")
 def startup() -> None: Base.metadata.create_all(bind=engine)
@@ -32,7 +39,7 @@ def startup() -> None: Base.metadata.create_all(bind=engine)
 if os.path.isdir("web"): app.mount("/web", StaticFiles(directory="web", html=True), name="web")
 
 @app.get("/")
-def root() -> dict[str, str]: return {"name": "JurisAI-BR", "status": "online", "version": "1.5.0"}
+def root() -> dict[str, str]: return {"name": "JurisAI-BR", "status": "online", "version": "1.6.0"}
 
 @app.get("/health")
 def health() -> dict[str, str]: return {"status": "ok"}
@@ -89,7 +96,7 @@ def legal_query(payload: LegalQueryRequest, actor: str = Depends(require_api_key
 
 @app.post("/v1/legal-research")
 def legal_research(payload: LegalQueryRequest, actor: str = Depends(require_api_key)) -> dict:
-    result = answer_with_sources(payload.question, payload.context); log_event("legal_research", {"actor": actor, "area": result["area"], "sources": len(result["sources"])}); return result
+    result = answer_with_sources(payload.question, payload.context); log_event("legal_research", {"actor": actor, "area": result["area"], "sources": len(result["sources"]), "grounded": result["grounded"]}); return result
 
 @app.get("/v1/sources")
 def sources() -> dict: return list_official_sources()
