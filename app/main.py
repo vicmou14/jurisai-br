@@ -6,16 +6,18 @@ from app.schemas import (
 from app.services.classifier import DISCLAIMER, classify_text, next_steps
 from app.services.analyzer import analyze_document
 from app.services.advisor import answer_question
+from app.services.rag import answer_with_sources
+from app.services.official_sources import list_official_sources
 
 app = FastAPI(
     title="JurisAI-BR",
-    description="API de triagem e organização de informações jurídicas brasileiras.",
-    version="1.0.0",
+    description="API de triagem, organização e recuperação de informações jurídicas brasileiras.",
+    version="1.1.0",
 )
 
 @app.get("/")
 def root() -> dict[str, str]:
-    return {"name": "JurisAI-BR", "status": "online", "version": "1.0.0"}
+    return {"name": "JurisAI-BR", "status": "online", "version": "1.1.0"}
 
 @app.get("/health")
 def health() -> dict[str, str]:
@@ -36,3 +38,11 @@ def analyze(payload: DocumentAnalysisRequest) -> DocumentAnalysisResult:
 @app.post("/v1/legal-query", response_model=LegalQueryResult)
 def legal_query(payload: LegalQueryRequest) -> LegalQueryResult:
     return LegalQueryResult(**answer_question(payload.question, payload.context))
+
+@app.post("/v1/legal-research")
+def legal_research(payload: LegalQueryRequest) -> dict:
+    return answer_with_sources(payload.question, payload.context)
+
+@app.get("/v1/sources")
+def sources() -> dict:
+    return list_official_sources()
