@@ -15,6 +15,7 @@ from app.services.advisor import answer_question
 from app.services.document_repository import save_document
 from app.services.rag import answer_with_sources
 from app.services.official_sources import list_official_sources
+from app.services.readiness import database_ready
 from app.services.seed_data import seed_demo_data
 from app.services.semantic_search import search as semantic_document_search
 from app.services.security import enforce_rate_limit
@@ -22,14 +23,14 @@ from app.services.sync_jobs import build_registry
 from app.services.sync_state import load_state, mark_synced
 from app.services.upload import extract_text
 
-app = FastAPI(title="JurisAI-BR", description="API de triagem, organização, pesquisa e recuperação de informações jurídicas brasileiras.", version="1.6.0")
+app = FastAPI(title="JurisAI-BR", description="API de triagem, organização, pesquisa e recuperação de informações jurídicas brasileiras.", version="1.7.0")
 origins = [value.strip() for value in os.getenv("JURISAI_CORS_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000").split(",") if value.strip()]
 app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=False, allow_methods=["GET", "POST"], allow_headers=["Content-Type", "X-API-Key"])
 SYNC_REGISTRY = build_registry()
 
 @app.middleware("http")
 async def rate_limit_requests(request: Request, call_next):
-    if request.url.path not in {"/health", "/health/details"}:
+    if request.url.path not in {"/health", "/health/details", "/ready"}:
         enforce_rate_limit(request)
     return await call_next(request)
 
@@ -39,10 +40,16 @@ def startup() -> None: Base.metadata.create_all(bind=engine)
 if os.path.isdir("web"): app.mount("/web", StaticFiles(directory="web", html=True), name="web")
 
 @app.get("/")
-def root() -> dict[str, str]: return {"name": "JurisAI-BR", "status": "online", "version": "1.6.0"}
+def root() -> dict[str, str]: return {"name": "JurisAI-BR", "status": "online", "version": "1.7.0"}
 
 @app.get("/health")
 def health() -> dict[str, str]: return {"status": "ok"}
+
+@app.get("/ready")
+def ready() -> dict:
+    ok, detail = database_ready()
+    if not ok: raise HTTPException(status_code=503, detail={"status": "not_ready", "database": detail})
+    return {"status": "ready", "database": "ok"}
 
 @app.get("/health/details")
 def health_details() -> dict[str, str]: return {"status": "ok", "database": engine.url.get_backend_name()}
