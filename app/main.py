@@ -27,23 +27,21 @@ app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=Fals
 SYNC_REGISTRY = build_registry()
 
 @app.on_event("startup")
-def startup() -> None:
-    Base.metadata.create_all(bind=engine)
+def startup() -> None: Base.metadata.create_all(bind=engine)
 
-if os.path.isdir("web"):
-    app.mount("/web", StaticFiles(directory="web", html=True), name="web")
+if os.path.isdir("web"): app.mount("/web", StaticFiles(directory="web", html=True), name="web")
 
 @app.get("/")
-def root() -> dict[str, str]:
-    return {"name": "JurisAI-BR", "status": "online", "version": "1.5.0"}
+def root() -> dict[str, str]: return {"name": "JurisAI-BR", "status": "online", "version": "1.5.0"}
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "database": engine.url.get_backend_name()}
+def health() -> dict[str, str]: return {"status": "ok"}
+
+@app.get("/health/details")
+def health_details() -> dict[str, str]: return {"status": "ok", "database": engine.url.get_backend_name()}
 
 @app.get("/v1/sync/status")
-def sync_status(actor: str = Depends(require_api_key)) -> dict:
-    return {"sources": SYNC_REGISTRY.names(), "state": load_state()}
+def sync_status(actor: str = Depends(require_api_key)) -> dict: return {"sources": SYNC_REGISTRY.names(), "state": load_state()}
 
 @app.post("/v1/sync/{source}")
 def sync_source(source: str, actor: str = Depends(require_api_key)) -> dict:
