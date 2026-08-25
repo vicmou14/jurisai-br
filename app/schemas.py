@@ -18,6 +18,12 @@ class LegalQueryRequest(BaseModel):
     question: str = Field(min_length=10, max_length=20000)
     context: str | None = Field(default=None, max_length=20000)
 
+class LegalDocumentCreate(BaseModel):
+    title: str = Field(min_length=3, max_length=500)
+    content: str = Field(min_length=10, max_length=200000)
+    source: str = Field(min_length=3, max_length=1000)
+    category: str = Field(default="geral", max_length=100)
+
 class ClassificationResult(BaseModel):
     area: LegalArea
     confidence: float = Field(ge=0, le=1)
