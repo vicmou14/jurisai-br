@@ -1,40 +1,9 @@
 const apiBase = window.JURISAI_API_BASE || "";
 const apiKey = sessionStorage.getItem("jurisai_api_key");
 if (!apiKey) location.href = "login.html";
-
-async function request(path, options = {}) {
-  const response = await fetch(apiBase + path, {
-    headers: { "Content-Type": "application/json", "X-API-Key": apiKey, ...(options.headers || {}) },
-    ...options,
-  });
-  if (!response.ok) throw new Error(`Erro ${response.status}`);
-  return response.json();
-}
-
-const results = document.querySelector("#results");
-const status = document.querySelector("#status");
-
-document.querySelector("#search-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const query = document.querySelector("#query").value;
-  status.textContent = "Pesquisando...";
-  results.innerHTML = "";
-  try {
-    const data = await request(`/v1/search?query=${encodeURIComponent(query)}`);
-    status.textContent = `${data.results.length} resultado(s)`;
-    for (const item of data.results) {
-      const article = document.createElement("article");
-      article.innerHTML = `<h3>${item.title}</h3><p>${item.content}</p><small>Fonte: ${item.source} | Relevância: ${item.score}</small>`;
-      results.appendChild(article);
-    }
-  } catch (error) { status.textContent = error.message; }
-});
-
-document.querySelector("#document-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const payload = { title: title.value, source: source.value, category: category.value, content: content.value };
-  try {
-    const data = await request("/v1/documents", { method: "POST", body: JSON.stringify(payload) });
-    status.textContent = `Documento salvo: ${data.id}`;
-  } catch (error) { status.textContent = error.message; }
-});
+async function request(path, options = {}) { const headers={"X-API-Key":apiKey,...(options.headers||{})}; if(!(options.body instanceof FormData)) headers["Content-Type"]="application/json"; const response=await fetch(apiBase+path,{...options,headers}); const data=await response.json().catch(()=>({})); if(!response.ok) throw new Error(data.detail||`Erro ${response.status}`); return data; }
+const results=document.querySelector("#results"), status=document.querySelector("#status");
+document.querySelector("#search-form").addEventListener("submit",async e=>{e.preventDefault();status.textContent="Pesquisando...";results.innerHTML="";try{const data=await request(`/v1/search?query=${encodeURIComponent(document.querySelector("#query").value)}`);status.textContent=`${data.results.length} resultado(s)`;data.results.forEach(item=>{const article=document.createElement("article");article.innerHTML=`<h3>${item.title}</h3><p>${item.content.slice(0,1200)}</p><small>Fonte: ${item.source} · Categoria: ${item.category} · Relevância: ${item.score}</small>`;results.appendChild(article);});}catch(error){status.textContent=error.message;}});
+document.querySelector("#document-form").addEventListener("submit",async e=>{e.preventDefault();try{const data=await request("/v1/documents",{method:"POST",body:JSON.stringify({title:document.querySelector("#title").value,source:document.querySelector("#source").value,category:document.querySelector("#category").value,content:document.querySelector("#content").value})});status.textContent=`Documento salvo: ${data.id}`;}catch(error){status.textContent=error.message;}});
+document.querySelector("#upload-form").addEventListener("submit",async e=>{e.preventDefault();const form=new FormData();form.append("file",document.querySelector("#file").files[0]);form.append("title",document.querySelector("#upload-title").value);form.append("source",document.querySelector("#upload-source").value);try{const data=await request("/v1/documents/upload",{method:"POST",body:form});status.textContent=`Arquivo processado: ${data.title} (${data.characters} caracteres)`;}catch(error){status.textContent=error.message;}});
+request("/v1/sources").then(data=>{const root=document.querySelector("#sources");root.innerHTML="";Object.entries(data).forEach(([group,items])=>{const block=document.createElement("div");block.innerHTML=`<h3>${group}</h3>`;(items||[]).forEach(item=>{const p=document.createElement("p");p.textContent=`${item.name}: ${item.purpose||item.url}`;block.appendChild(p);});root.appendChild(block);});}).catch(()=>{document.querySelector("#sources").textContent="Indisponível";});
