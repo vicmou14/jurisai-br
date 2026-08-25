@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JurisAI-BR</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="container">
+    <header>
+      <h1>JurisAI-BR</h1>
+      <p>Pesquisa, triagem e organização de informações jurídicas.</p>
+    </header>
+    <section class="card">
+      <h2>Pesquisa jurídica</h2>
+      <form id="search-form">
+        <input id="query" required minlength="3" placeholder="Ex.: produto defeituoso e direito do consumidor">
+        <button>Pesquisar</button>
+      </form>
+      <div id="status"></div>
+      <div id="results"></div>
+    </section>
+    <section class="card">
+      <h2>Ingerir documento</h2>
+      <form id="document-form">
+        <input id="title" required placeholder="Título">
+        <input id="source" required placeholder="Fonte">
+        <input id="category" placeholder="Categoria" value="geral">
+        <textarea id="content" required placeholder="Conteúdo jurídico"></textarea>
+        <button>Salvar documento</button>
+      </form>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
