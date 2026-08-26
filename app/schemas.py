@@ -29,6 +29,11 @@ class DraftDocumentInput(BaseModel):
 class DraftGenerateRequest(DraftPrepareRequest):
     documents: list[DraftDocumentInput] = Field(default_factory=list, max_length=20)
 
+class DraftExportRequest(BaseModel):
+    title: str = Field(min_length=3, max_length=500)
+    content: str = Field(min_length=1, max_length=500000)
+    profile: Literal["coder", "office"] = "office"
+
 class LegalDocumentCreate(BaseModel):
     title: str = Field(min_length=3, max_length=500)
     content: str = Field(min_length=10, max_length=200000)
