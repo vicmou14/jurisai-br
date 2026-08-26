@@ -4,8 +4,27 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      live_smoke:
+        description: Run the live OpenAI and DOCX smoke test
+        required: true
+        default: false
+        type: boolean
 jobs:
   test:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - run: pytest -q
+  live-smoke:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.live_smoke }}
     runs-on: ubuntu-latest
     env:
       PYTHONPATH: ${{ github.workspace }}
@@ -17,7 +36,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r requirements.txt
-      - run: pytest -q
+      - name: Check API key is configured
+        run: test -n "$OPENAI_API_KEY"
       - name: Live OpenAI and DOCX smoke test
-        if: ${{ env.OPENAI_API_KEY != '' && github.event_name == 'push' }}
         run: python scripts/live_smoke.py
