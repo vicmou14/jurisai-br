@@ -18,6 +18,10 @@ class LegalQueryRequest(BaseModel):
     question: str = Field(min_length=10, max_length=20000)
     context: str | None = Field(default=None, max_length=20000)
 
+class DraftPrepareRequest(BaseModel):
+    instruction: str = Field(min_length=5, max_length=50000)
+    context: str | None = Field(default=None, max_length=100000)
+
 class LegalDocumentCreate(BaseModel):
     title: str = Field(min_length=3, max_length=500)
     content: str = Field(min_length=10, max_length=200000)
