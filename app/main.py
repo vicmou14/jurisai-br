@@ -27,10 +27,11 @@ from app.services.semantic_search import search as semantic_document_search
 from app.services.security import enforce_rate_limit
 from app.services.sync_jobs import build_registry
 from app.services.sync_state import load_state, mark_synced
+from app.services.text_generation import generate_legal_draft
 from app.services.upload import extract_text
 from app.services.writing_profiles import build_writing_brief
 
-app = FastAPI(title="JurisAI-BR", description="Ambiente pessoal para instruções, documentos e produção jurídica brasileira.", version="1.11.0")
+app = FastAPI(title="JurisAI-BR", description="Ambiente pessoal para instruções, documentos e produção jurídica brasileira.", version="1.12.0")
 origins = [value.strip() for value in os.getenv("JURISAI_CORS_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000").split(",") if value.strip()]
 app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=False, allow_methods=["GET", "POST"], allow_headers=["Content-Type", "X-API-Key"])
 SYNC_REGISTRY = build_registry()
@@ -57,7 +58,7 @@ def startup() -> None: Base.metadata.create_all(bind=engine)
 if os.path.isdir("web"): app.mount("/web", StaticFiles(directory="web", html=True), name="web")
 
 @app.get("/")
-def root() -> dict[str, str]: return {"name": "JurisAI-BR", "status": "online", "version": "1.11.0"}
+def root() -> dict[str, str]: return {"name": "JurisAI-BR", "status": "online", "version": "1.12.0"}
 
 @app.get("/health")
 def health() -> dict[str, str]: return {"status": "ok"}
@@ -89,15 +90,24 @@ def generate_draft(payload: DraftGenerateRequest, actor: str = Depends(require_a
     log_event("generate_draft", {"actor": actor, "profile": result["profile"], "document_type": result["document_type"], "documents": result["documents_count"]})
     return result
 
+@app.post("/v1/draft/write")
+def write_draft(payload: DraftGenerateRequest, actor: str = Depends(require_api_key)) -> dict:
+    documents = [item.model_dump() for item in payload.documents]
+    try:
+        result = generate_legal_draft(payload.instruction, payload.context, documents)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    log_event("write_draft", {"actor": actor, "profile": result["profile"], "document_type": result["document_type"], "model": result["model"], "documents": result["documents_count"]})
+    return result
+
 @app.post("/v1/draft/export")
 def export_draft(payload: DraftExportRequest, actor: str = Depends(require_api_key)) -> StreamingResponse:
-    filename, data = export_docx(payload.title, payload.content, payload.profile)
+    try:
+        filename, data = export_docx(payload.title, payload.content, payload.profile)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     log_event("export_draft_docx", {"actor": actor, "profile": payload.profile, "title": payload.title})
-    return StreamingResponse(
-        BytesIO(data),
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+    return StreamingResponse(BytesIO(data), media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 @app.get("/v1/sync/status")
 def sync_status(actor: str = Depends(require_api_key)) -> dict: return {"sources": SYNC_REGISTRY.names(), "state": load_state()}
