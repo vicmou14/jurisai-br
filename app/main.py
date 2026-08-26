@@ -1,20 +1,22 @@
 import os
 import time
+from io import BytesIO
 from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 from app.db import Base, engine, get_session
 import app.models  # noqa: F401
-from app.schemas import ClassifyRequest, ClassificationResult, DocumentAnalysisRequest, DocumentAnalysisResult, DraftGenerateRequest, DraftPrepareRequest, LegalDocumentCreate, LegalQueryRequest, LegalQueryResult
+from app.schemas import ClassifyRequest, ClassificationResult, DocumentAnalysisRequest, DocumentAnalysisResult, DraftExportRequest, DraftGenerateRequest, DraftPrepareRequest, LegalDocumentCreate, LegalQueryRequest, LegalQueryResult
 from app.services.auth import require_api_key
 from app.services.audit import log_event
 from app.services.classifier import DISCLAIMER, classify_text, next_steps
 from app.services.analyzer import analyze_document
 from app.services.advisor import answer_question
 from app.services.document_repository import save_document
+from app.services.docx_export import export_docx
 from app.services.draft_generation import build_draft_request
 from app.services.metrics import increment, snapshot
 from app.services.rag import answer_with_sources
@@ -28,7 +30,7 @@ from app.services.sync_state import load_state, mark_synced
 from app.services.upload import extract_text
 from app.services.writing_profiles import build_writing_brief
 
-app = FastAPI(title="JurisAI-BR", description="Ambiente pessoal para instruções, documentos e produção jurídica brasileira.", version="1.10.0")
+app = FastAPI(title="JurisAI-BR", description="Ambiente pessoal para instruções, documentos e produção jurídica brasileira.", version="1.11.0")
 origins = [value.strip() for value in os.getenv("JURISAI_CORS_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000").split(",") if value.strip()]
 app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=False, allow_methods=["GET", "POST"], allow_headers=["Content-Type", "X-API-Key"])
 SYNC_REGISTRY = build_registry()
@@ -55,7 +57,7 @@ def startup() -> None: Base.metadata.create_all(bind=engine)
 if os.path.isdir("web"): app.mount("/web", StaticFiles(directory="web", html=True), name="web")
 
 @app.get("/")
-def root() -> dict[str, str]: return {"name": "JurisAI-BR", "status": "online", "version": "1.10.0"}
+def root() -> dict[str, str]: return {"name": "JurisAI-BR", "status": "online", "version": "1.11.0"}
 
 @app.get("/health")
 def health() -> dict[str, str]: return {"status": "ok"}
@@ -86,6 +88,16 @@ def generate_draft(payload: DraftGenerateRequest, actor: str = Depends(require_a
     result = build_draft_request(payload.instruction, payload.context, documents)
     log_event("generate_draft", {"actor": actor, "profile": result["profile"], "document_type": result["document_type"], "documents": result["documents_count"]})
     return result
+
+@app.post("/v1/draft/export")
+def export_draft(payload: DraftExportRequest, actor: str = Depends(require_api_key)) -> StreamingResponse:
+    filename, data = export_docx(payload.title, payload.content, payload.profile)
+    log_event("export_draft_docx", {"actor": actor, "profile": payload.profile, "title": payload.title})
+    return StreamingResponse(
+        BytesIO(data),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 @app.get("/v1/sync/status")
 def sync_status(actor: str = Depends(require_api_key)) -> dict: return {"sources": SYNC_REGISTRY.names(), "state": load_state()}
