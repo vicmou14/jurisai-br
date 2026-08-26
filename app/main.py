@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db import Base, engine, get_session
 import app.models  # noqa: F401
-from app.schemas import ClassifyRequest, ClassificationResult, DocumentAnalysisRequest, DocumentAnalysisResult, LegalDocumentCreate, LegalQueryRequest, LegalQueryResult
+from app.schemas import ClassifyRequest, ClassificationResult, DocumentAnalysisRequest, DocumentAnalysisResult, DraftPrepareRequest, LegalDocumentCreate, LegalQueryRequest, LegalQueryResult
 from app.services.auth import require_api_key
 from app.services.audit import log_event
 from app.services.classifier import DISCLAIMER, classify_text, next_steps
@@ -25,8 +25,9 @@ from app.services.security import enforce_rate_limit
 from app.services.sync_jobs import build_registry
 from app.services.sync_state import load_state, mark_synced
 from app.services.upload import extract_text
+from app.services.writing_profiles import build_writing_brief
 
-app = FastAPI(title="JurisAI-BR", description="API de triagem, organização, pesquisa e recuperação de informações jurídicas brasileiras.", version="1.8.0")
+app = FastAPI(title="JurisAI-BR", description="Ambiente pessoal para instruções, documentos e produção jurídica brasileira.", version="1.9.0")
 origins = [value.strip() for value in os.getenv("JURISAI_CORS_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000").split(",") if value.strip()]
 app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=False, allow_methods=["GET", "POST"], allow_headers=["Content-Type", "X-API-Key"])
 SYNC_REGISTRY = build_registry()
@@ -53,7 +54,7 @@ def startup() -> None: Base.metadata.create_all(bind=engine)
 if os.path.isdir("web"): app.mount("/web", StaticFiles(directory="web", html=True), name="web")
 
 @app.get("/")
-def root() -> dict[str, str]: return {"name": "JurisAI-BR", "status": "online", "version": "1.8.0"}
+def root() -> dict[str, str]: return {"name": "JurisAI-BR", "status": "online", "version": "1.9.0"}
 
 @app.get("/health")
 def health() -> dict[str, str]: return {"status": "ok"}
@@ -71,6 +72,12 @@ def health_details() -> dict[str, str]: return {"status": "ok", "database": engi
 def metrics(actor: str = Depends(require_api_key)) -> str:
     values = snapshot()
     return "\n".join(f"jurisai_{name} {value}" for name, value in sorted(values.items())) + "\n"
+
+@app.post("/v1/draft/prepare")
+def prepare_draft(payload: DraftPrepareRequest, actor: str = Depends(require_api_key)) -> dict:
+    brief = build_writing_brief(payload.instruction, payload.context)
+    log_event("prepare_draft", {"actor": actor, "profile": brief["profile"], "document_type": brief["document_type"]})
+    return brief
 
 @app.get("/v1/sync/status")
 def sync_status(actor: str = Depends(require_api_key)) -> dict: return {"sources": SYNC_REGISTRY.names(), "state": load_state()}
@@ -91,13 +98,16 @@ def ingest_document(payload: LegalDocumentCreate, session: Session = Depends(get
 
 @app.post("/v1/documents/upload")
 async def upload_document(file: UploadFile = File(...), title: str | None = Form(default=None), source: str | None = Form(default=None), category: str = Form(default="geral"), session: Session = Depends(get_session), actor: str = Depends(require_api_key)) -> dict:
+    filename = file.filename or "upload"
+    if not filename.lower().endswith((".pdf", ".docx")):
+        raise HTTPException(status_code=400, detail="Formato não suportado para este fluxo. Use PDF ou DOCX.")
     data = await file.read()
-    try: content = extract_text(file.filename or "upload", data)
+    try: content = extract_text(filename, data)
     except ValueError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
     if len(content.strip()) < 10: raise HTTPException(status_code=400, detail="Não foi possível extrair conteúdo jurídico suficiente.")
-    document = save_document(session, title or file.filename or "Documento", content, source or "upload", category)
-    log_event("upload_document", {"actor": actor, "document_id": document.id, "filename": file.filename})
-    return {"id": document.id, "title": document.title, "characters": len(content), "created": True}
+    document = save_document(session, title or filename or "Documento", content, source or "upload", category)
+    log_event("upload_document", {"actor": actor, "document_id": document.id, "filename": filename})
+    return {"id": document.id, "title": document.title, "characters": len(content), "format": filename.rsplit(".", 1)[-1].upper(), "created": True}
 
 @app.post("/v1/documents/seed")
 def seed_documents(session: Session = Depends(get_session), actor: str = Depends(require_api_key)) -> dict:
