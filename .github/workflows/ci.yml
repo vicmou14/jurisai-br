@@ -9,6 +9,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PYTHONPATH: ${{ github.workspace }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      JURISAI_TEXT_MODEL: gpt-5.6-sol
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -16,3 +18,6 @@ jobs:
           python-version: '3.12'
       - run: pip install -r requirements.txt
       - run: pytest -q
+      - name: Live OpenAI and DOCX smoke test
+        if: ${{ env.OPENAI_API_KEY != '' && github.event_name == 'push' }}
+        run: python scripts/live_smoke.py
