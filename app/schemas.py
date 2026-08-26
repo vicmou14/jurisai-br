@@ -22,6 +22,13 @@ class DraftPrepareRequest(BaseModel):
     instruction: str = Field(min_length=5, max_length=50000)
     context: str | None = Field(default=None, max_length=100000)
 
+class DraftDocumentInput(BaseModel):
+    title: str = Field(default="Documento", min_length=1, max_length=500)
+    content: str = Field(min_length=1, max_length=200000)
+
+class DraftGenerateRequest(DraftPrepareRequest):
+    documents: list[DraftDocumentInput] = Field(default_factory=list, max_length=20)
+
 class LegalDocumentCreate(BaseModel):
     title: str = Field(min_length=3, max_length=500)
     content: str = Field(min_length=10, max_length=200000)
