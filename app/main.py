@@ -27,11 +27,11 @@ from app.services.semantic_search import search as semantic_document_search
 from app.services.security import enforce_rate_limit
 from app.services.sync_jobs import build_registry
 from app.services.sync_state import load_state, mark_synced
-from app.services.text_generation import generate_legal_draft
+from app.services.text_generation import generate_legal_draft, get_text_provider_status
 from app.services.upload import extract_text
 from app.services.writing_profiles import build_writing_brief
 
-app = FastAPI(title="JurisAI-BR", description="Ambiente pessoal para instruções, documentos e produção jurídica brasileira.", version="1.12.0")
+app = FastAPI(title="JurisAI-BR", description="Ambiente pessoal para instruções, documentos e produção jurídica brasileira.", version="1.13.0")
 origins = [value.strip() for value in os.getenv("JURISAI_CORS_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000").split(",") if value.strip()]
 app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=False, allow_methods=["GET", "POST"], allow_headers=["Content-Type", "X-API-Key"])
 SYNC_REGISTRY = build_registry()
@@ -58,7 +58,7 @@ def startup() -> None: Base.metadata.create_all(bind=engine)
 if os.path.isdir("web"): app.mount("/web", StaticFiles(directory="web", html=True), name="web")
 
 @app.get("/")
-def root() -> dict[str, str]: return {"name": "JurisAI-BR", "status": "online", "version": "1.12.0"}
+def root() -> dict[str, str]: return {"name": "JurisAI-BR", "status": "online", "version": "1.13.0"}
 
 @app.get("/health")
 def health() -> dict[str, str]: return {"status": "ok"}
@@ -76,6 +76,12 @@ def health_details() -> dict[str, str]: return {"status": "ok", "database": engi
 def metrics(actor: str = Depends(require_api_key)) -> str:
     values = snapshot()
     return "\n".join(f"jurisai_{name} {value}" for name, value in sorted(values.items())) + "\n"
+
+@app.get("/v1/text/status")
+def text_status(actor: str = Depends(require_api_key)) -> dict:
+    status = get_text_provider_status()
+    log_event("text_provider_status", {"actor": actor, "provider": status.get("provider"), "model": status.get("model"), "reachable": status.get("reachable")})
+    return status
 
 @app.post("/v1/draft/prepare")
 def prepare_draft(payload: DraftPrepareRequest, actor: str = Depends(require_api_key)) -> dict:
