@@ -18,7 +18,7 @@ Ambiente pessoal para instruções, documentos e produção jurídica brasileira
 
 Pré-requisito já confirmado neste ambiente: `ollama list` deve mostrar `qwen3:8b`.
 
-### 1. Obtenha o projeto
+### 1. Obtenha ou atualize o projeto
 ```powershell
 cd $HOME
 if (-not (Test-Path jurisai-br)) { git clone https://github.com/vicmou14/jurisai-br.git }
@@ -26,29 +26,15 @@ cd jurisai-br
 git pull
 ```
 
-### 2. Crie o ambiente e instale as dependências
+### 2. Execute o inicializador automático
 ```powershell
-py -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\start_local.ps1
 ```
 
-### 3. Configure o ambiente local
-```powershell
-Copy-Item .env.example .env
-```
+O script verifica o Ollama e o modelo `qwen3:8b`, cria o ambiente Python, instala as dependências, cria `.env` quando necessário e inicia a API. A interface abre em:
 
-O padrão já está configurado para:
-- `JURISAI_TEXT_PROVIDER=ollama`
-- `JURISAI_OLLAMA_URL=http://127.0.0.1:11434`
-- `JURISAI_OLLAMA_MODEL=qwen3:8b`
-
-### 4. Execute
-```powershell
-uvicorn app.main:app --reload
-```
-
-Abra `http://127.0.0.1:8000/web/`.
+`http://127.0.0.1:8000/web/`
 
 ## Verificação do gerador local
 Com a API em execução, abra outro PowerShell e execute:
