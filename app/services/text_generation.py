@@ -12,6 +12,10 @@ DEFAULT_OLLAMA_MODEL = "qwen3:8b"
 DEFAULT_OPENAI_MODEL = "gpt-5.6-sol"
 
 
+def _ollama_base_url() -> str:
+    return os.getenv("JURISAI_OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
+
+
 def _build_prompt(draft: dict, instruction: str, context: str | None) -> str:
     return "\n".join([
         "Você é o gerador de texto jurídico do JurisAI-BR.",
@@ -28,8 +32,48 @@ def _build_prompt(draft: dict, instruction: str, context: str | None) -> str:
     ])
 
 
+def get_text_provider_status() -> dict:
+    provider = os.getenv("JURISAI_TEXT_PROVIDER", DEFAULT_PROVIDER).strip().lower()
+    if provider == "openai":
+        model = os.getenv("JURISAI_OPENAI_MODEL", DEFAULT_OPENAI_MODEL)
+        return {
+            "provider": provider,
+            "model": model,
+            "configured": bool(os.getenv("OPENAI_API_KEY")),
+            "reachable": None,
+        }
+    if provider != "ollama":
+        return {"provider": provider, "model": None, "configured": False, "reachable": False}
+
+    model = os.getenv("JURISAI_OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
+    base_url = _ollama_base_url()
+    try:
+        response = httpx.get(f"{base_url}/api/tags", timeout=10)
+        response.raise_for_status()
+        models = response.json().get("models") or []
+        available = {str(item.get("name") or "") for item in models}
+        return {
+            "provider": provider,
+            "model": model,
+            "configured": True,
+            "reachable": True,
+            "model_available": model in available,
+            "url": base_url,
+        }
+    except httpx.HTTPError as exc:
+        return {
+            "provider": provider,
+            "model": model,
+            "configured": True,
+            "reachable": False,
+            "model_available": False,
+            "url": base_url,
+            "detail": str(exc),
+        }
+
+
 def _generate_with_ollama(prompt: str) -> tuple[str, str]:
-    base_url = os.getenv("JURISAI_OLLAMA_URL", "http://host.docker.internal:11434").rstrip("/")
+    base_url = _ollama_base_url()
     model = os.getenv("JURISAI_OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
     try:
         response = httpx.post(
